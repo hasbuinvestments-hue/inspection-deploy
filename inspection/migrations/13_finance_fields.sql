@@ -1,0 +1,2 @@
+ALTER TABLE inspections ADD COLUMN IF NOT EXISTS payment_notes TEXT;
+ALTER TABLE inspections ADD COLUMN IF NOT EXISTS contacted_on TIMESTAMPTZ;
