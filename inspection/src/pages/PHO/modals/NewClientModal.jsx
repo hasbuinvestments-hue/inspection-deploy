@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { saveSubmission } from '../../../lib/offline-store';
 
@@ -32,7 +32,7 @@ export default function NewClientModal({ profile, isOpen, onClose, onSuccess, cl
   const [error, setError] = useState('');
 
   // Capture GPS coordinates on mount (field registration)
-  useState(() => {
+  useEffect(() => {
     if (!clientToEdit && "geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -42,9 +42,7 @@ export default function NewClientModal({ profile, isOpen, onClose, onSuccess, cl
             location_lng: pos.coords.longitude
           }));
         },
-        () => {
-          // Silent fail - user can still register without GPS
-        }
+        () => {} // silent fail - user can still register without GPS
       );
     }
   }, []);
@@ -75,7 +73,7 @@ export default function NewClientModal({ profile, isOpen, onClose, onSuccess, cl
       if (onSuccess) onSuccess(res);
       onClose();
     } catch (err) {
-      if (err.message === 'OFFLINE_ERROR') {
+      if (!navigator.onLine || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
         try {
           await saveSubmission('registration', { ...formData, id_to_edit: clientToEdit?.id });
           alert('OFFLINE: No internet connection. Registration saved locally on your phone and will sync automatically when you are back online.');

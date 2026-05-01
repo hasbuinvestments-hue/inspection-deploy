@@ -75,7 +75,7 @@ class NotificationService:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "from": "Nairobi Inspection <noreply@resend.dev>",
+                    "from": f"Nairobi Inspection <{os.getenv('NOREPLY_EMAIL', 'noreply@nccg.go.ke')}>",
                     "to": to_email,
                     "subject": subject,
                     "html": f"<p>{content}</p>"
