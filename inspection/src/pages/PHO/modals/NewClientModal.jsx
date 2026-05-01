@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { apiFetch } from '../../../lib/api';
+import { saveSubmission } from '../../../lib/offline-store';
 
 export default function NewClientModal({ profile, isOpen, onClose, onSuccess, clientToEdit = null }) {
   const [formData, setFormData] = useState({
@@ -54,7 +55,18 @@ export default function NewClientModal({ profile, isOpen, onClose, onSuccess, cl
       if (onSuccess) onSuccess(res);
       onClose();
     } catch (err) {
-      setError(err.message);
+      if (err.message === 'OFFLINE_ERROR') {
+        try {
+          await saveSubmission('registration', { ...formData, id_to_edit: clientToEdit?.id });
+          alert('OFFLINE: No internet connection. Registration saved locally on your phone and will sync automatically when you are back online.');
+          onClose();
+          return;
+        } catch (e) {
+          setError('Offline storage failed. Please check your browser settings.');
+        }
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }

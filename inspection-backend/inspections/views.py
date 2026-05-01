@@ -63,10 +63,12 @@ class BusinessViewSet(viewsets.ModelViewSet):
         
         if is_new:
             from .utils import log_activity
+            from .notifications import NotificationService
             log_activity(user, 'FIELD_CLIENT_REGISTERED', {
                 'business_id': str(instance.id),
                 'business_name': instance.business_name
             })
+            NotificationService.send_registration_alert(instance)
 
     @action(detail=False, methods=['GET'], permission_classes=[permissions.IsAuthenticated], url_path='debug-subcounties')
     def debug_subcounties(self, request):
@@ -161,6 +163,10 @@ class InspectionViewSet(viewsets.ModelViewSet):
             'is_draft': instance.is_draft
         })
 
+        if not instance.is_draft:
+            from .notifications import NotificationService
+            NotificationService.send_audit_completion_alert(instance)
+
     def partial_update(self, request, *args, **kwargs):
         from .utils import log_activity
         instance = self.get_object()
@@ -182,6 +188,13 @@ class InspectionViewSet(viewsets.ModelViewSet):
                 'new_payment': new_pay_status
             })
             
+        # Trigger notification if it was a draft but is now submitted
+        if response.data.get('is_draft') is False and instance.is_draft is True:
+             from .notifications import NotificationService
+             # We need the updated instance
+             instance.refresh_from_db()
+             NotificationService.send_audit_completion_alert(instance)
+
         return response
 
     @action(detail=False, methods=['GET'], permission_classes=[permissions.AllowAny], url_path='subcounties')

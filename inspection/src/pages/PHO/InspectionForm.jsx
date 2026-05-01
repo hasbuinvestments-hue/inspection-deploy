@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../lib/api';
+import { saveSubmission } from '../../lib/offline-store';
 import { sendClientInvoice, sendClientReport } from '../../lib/emailService';
 import { compressImage } from '../../lib/imageCompression';
 import { logError } from '../../lib/logger';
@@ -345,6 +346,16 @@ export default function InspectionForm({ profile, initialData, onComplete }) {
         }));
       }
     } catch(e) { 
+      if (e.message === 'OFFLINE_ERROR') {
+        try {
+          await saveSubmission('audit', { ...payload, inspectionId });
+          alert('OFFLINE: Audit saved locally on your phone. Photos were NOT uploaded but the report data is safe and will sync when you are back online.');
+          if (onComplete) onComplete();
+          return;
+        } catch (offlineErr) {
+          console.error(offlineErr);
+        }
+      }
       console.error(e);
       logError(e, { source: 'InspectionForm.submitReport', metadata: { actionPhase, formData: { ...formData, media: [] } } });
       alert("Submission failed: " + e.message);

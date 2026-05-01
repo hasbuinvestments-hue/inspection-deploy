@@ -29,7 +29,16 @@ export const apiFetch = async (endpoint, options = {}) => {
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    let response = await fetch(url, { ...options, headers });
+    let response;
+    try {
+        response = await fetch(url, { ...options, headers });
+    } catch (error) {
+        // Network error (likely offline)
+        if (!navigator.onLine) {
+            throw new Error('OFFLINE_ERROR');
+        }
+        throw error;
+    }
 
     if (response.status === 401 && token) {
         const refresh = getRefreshToken();

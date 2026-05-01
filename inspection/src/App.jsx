@@ -23,10 +23,13 @@ const Superadmin = lazy(() => import('./pages/Superadmin/Superadmin'));
 const VerifyReport = lazy(() => import('./pages/Verify/VerifyReport'));
 const InviteRegistration = lazy(() => import('./pages/Invite/InviteRegistration'));
 
+import SyncManager from './components/common/SyncManager';
+
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <SyncManager />
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
