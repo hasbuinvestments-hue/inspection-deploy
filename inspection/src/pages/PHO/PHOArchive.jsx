@@ -29,7 +29,7 @@ export default function PHOArchive({ profile, onResume }) {
   const handleViewPDF = async (item) => {
     try {
       const full = await apiFetch(`/inspections/inspections/${item.id}/`);
-      generateInspectionPDF(full);
+      generateInspectionPDF(full, { company_name: profile?.company_name, company_email: profile?.company_email });
     } catch (e) {
       alert("Error generating PDF: " + e.message);
     }

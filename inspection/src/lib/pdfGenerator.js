@@ -1,9 +1,9 @@
 import { jsPDF } from 'jspdf';
 import nairobiLogo from '/nairobi_logo.png';
 import { logError } from './logger';
-import { getBusinessEmail, getBusinessPhone } from './reportContacts';
+import { getBusinessEmail, getBusinessPhone, getBusinessContactName } from './reportContacts';
 
-export async function generateInspectionPDF(reportData) {
+export async function generateInspectionPDF(reportData, senderInfo = {}) {
     if (!reportData) return;
 
     try {
@@ -123,13 +123,16 @@ export async function generateInspectionPDF(reportData) {
 
         sectionBar('CLIENT INFORMATION');
         row('Business:', c.business_name, pageW / 2, 'Permit No:', c.permit_no);
-        row('Location:', c.ward_name || c.subcounty_name || '—', pageW / 2, 'Tracking ID:', reportData.id ? reportData.id.split('-')[0] : '—');
-        // Fix: contact_person -> contact_person_name
-        row('Contact Person:', c.contact_person_name || '—', pageW / 2, 'Phone:', getBusinessPhone(c));
+        const location = [c.building_name, c.street_name, c.ward_name, c.subcounty_name].filter(Boolean).join(', ') || '—';
+        row('Location:', location, pageW / 2, 'Tracking ID:', reportData.id ? reportData.id.split('-')[0] : '—');
+        row('Contact Person:', getBusinessContactName(c), pageW / 2, 'Phone:', getBusinessPhone(c));
         row('Email:', getBusinessEmail(c));
         y += 2;
 
         sectionBar('INSPECTION DETAILS');
+        if (senderInfo?.company_name || senderInfo?.company_email) {
+            row('Service Co.:', senderInfo.company_name || '—', pageW / 2, 'Co. Email:', senderInfo.company_email || '—');
+        }
         row('Date & Time:', dateStr, pageW / 2, 'Lead PHO:', reportData.inspector_name);
         row('Personnel:', (reportData.personnel || []).join(', ') || 'Lead only');
         row('Service Type:', reportData.service_type || '—', pageW / 2, 'Total Fee:', `KES ${Number(reportData.calculated_fee || 0).toLocaleString()}`);
@@ -162,8 +165,8 @@ export async function generateInspectionPDF(reportData) {
         
         doc.setFontSize(8);
         doc.setTextColor(30, 41, 59);
-        const govtShare = Number(reportData.calculated_fee || 0) * 0.25;
-        const vendorShare = Number(reportData.calculated_fee || 0) * 0.75;
+        const govtShare = Number(reportData.ipm_nccg) || Number(reportData.calculated_fee || 0) * 0.25;
+        const vendorShare = Number(reportData.ipm_vendor) || Number(reportData.calculated_fee || 0) * 0.75;
         doc.text(`Government Share (25%): KES ${govtShare.toLocaleString()}`, margin + 4, y + 10);
         doc.text(`Vendor Share (75%): KES ${vendorShare.toLocaleString()}`, margin + usableW / 2 + 4, y + 10);
         

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { apiFetch } from '/src/lib/api.js';
+import { apiFetch } from '../../lib/api';
 import Modal from '../../../components/common/Modal';
 
 export default function TransferZoneModal({ staff, isOpen, onClose, onComplete }) {

@@ -3,11 +3,15 @@ import { apiFetch } from '../../lib/api';
 import Table from '../../components/common/Table';
 import Badge from '../../components/common/Badge';
 
+import NewClientModal from './modals/NewClientModal';
+
 export default function PHOApplications({ profile, onApplied }) {
   const [search, setSearch] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState(null);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -16,7 +20,6 @@ export default function PHOApplications({ profile, onApplied }) {
     setLoading(true);
     try {
       const res = await apiFetch(`/inspections/businesses/?search=${encodeURIComponent(search)}&limit=10`);
-      // Fix: Res is paginated {count, results, ...}
       setResults(res.results || res);
     } catch (err) {
       alert("Search failed: " + err.message);
@@ -32,8 +35,7 @@ export default function PHOApplications({ profile, onApplied }) {
         method: 'POST',
         body: JSON.stringify({ business: businessId, status: 'active' })
       });
-      alert("Application submitted successfully! You can now proceed to the Audit form.");
-      // Fix: Trigger onApplied callback to switch tabs
+      alert("Application submitted successfully!");
       if (onApplied) onApplied();
       setResults(results.filter(r => r.id !== businessId));
     } catch (err) {
@@ -45,9 +47,23 @@ export default function PHOApplications({ profile, onApplied }) {
 
   return (
     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-slate-800">Business Registry Search</h2>
-        <p className="text-sm text-slate-500">Phases 1: Apply for a business in {profile?.subcounty || 'your subcounty'} before starting an audit.</p>
+      <div className="mb-6 flex justify-between items-start">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Business Registry Search</h2>
+          <p className="text-sm text-slate-500">Apply for a business in {profile?.subcounty} or register a new one if missing.</p>
+        </div>
+        <button 
+          onClick={() => {
+            setClientToEdit(null);
+            setIsModalOpen(true);
+          }}
+          className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold px-4 py-2 rounded-lg border border-emerald-200 transition-all flex items-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          New Client
+        </button>
       </div>
 
       <form onSubmit={handleSearch} className="flex gap-2 mb-8">
@@ -67,6 +83,23 @@ export default function PHOApplications({ profile, onApplied }) {
         </button>
       </form>
 
+      <NewClientModal 
+        profile={profile}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setClientToEdit(null);
+        }}
+        onSuccess={() => {
+          // Instead of auto-applying, just close and let them search
+          if (search) {
+             const fakeEvent = { preventDefault: () => {} };
+             handleSearch(fakeEvent);
+          }
+        }}
+        clientToEdit={clientToEdit}
+      />
+
       {results.length > 0 ? (
         <Table 
           headers={['Business Name', 'Permit No', 'Ward', 'Action']}
@@ -81,7 +114,18 @@ export default function PHOApplications({ profile, onApplied }) {
               </td>
               <td className="p-4 text-sm text-slate-600">{item.permit_no || 'N/A'}</td>
               <td className="p-4 text-sm text-slate-600">{item.ward_name}</td>
-              <td className="p-4 text-right">
+              <td className="p-4 text-right flex justify-end gap-2">
+                {item.is_new_registration && (
+                  <button 
+                    onClick={() => {
+                      setClientToEdit(item);
+                      setIsModalOpen(true);
+                    }}
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold px-3 py-2 rounded-md transition-all shadow-sm"
+                  >
+                    Edit
+                  </button>
+                )}
                 <button 
                   onClick={() => handleApply(item.id)}
                   disabled={submitting === item.id}

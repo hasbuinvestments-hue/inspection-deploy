@@ -14,7 +14,7 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('leaflet') || id.includes('react-leaflet')) return 'vendor_maps';
           if (id.includes('jspdf')) return 'vendor_pdf';
-          if (id.includes('@supabase/supabase-js')) return 'vendor_db';
+          // supabase removed — project uses Django REST backend
           if (id.includes('lucide-react')) return 'vendor_ui';
           return undefined;
         }

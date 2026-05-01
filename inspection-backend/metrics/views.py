@@ -1,10 +1,12 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework import permissions
 from rest_framework.response import Response
-from inspections.models import Business, Inspection
+from inspections.models import Business, Inspection, BusinessApplication
 from users.models import User
 from django.db.models import Sum, Count, Q
+from django.db.models.functions import TruncDate
 from django.utils import timezone
+from datetime import timedelta
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -145,6 +147,12 @@ def get_pho_dashboard_stats(request):
         # Use aggregation but ensure we handle None
         revenue_data = approved.aggregate(total=Sum('calculated_fee'))
         total_rev = revenue_data['total'] or 0
+
+        # Productivity Metrics (Today vs Yesterday)
+        today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
+
+        apps = BusinessApplication.objects.filter(inspector=user)
         
         return Response({
             'drafts': inspections.filter(is_draft=True).count(),
@@ -153,12 +161,93 @@ def get_pho_dashboard_stats(request):
             'approved': approved.count(),
             'flagged': inspections.filter(payment_status='flagged').count(),
             'govt_revenue': float(total_rev) * 0.25,
-            'vendor_revenue': float(total_rev) * 0.75
+            'vendor_revenue': float(total_rev) * 0.75,
+            'productivity': {
+                'today': {
+                    'applications': apps.filter(applied_at__date=today).count(),
+                    'audits': inspections.filter(created_at__date=today).count()
+                },
+                'yesterday': {
+                    'applications': apps.filter(applied_at__date=yesterday).count(),
+                    'audits': inspections.filter(created_at__date=yesterday).count()
+                }
+            }
         })
     except Exception as e:
         # Log to server but return empty stats instead of 502
         return Response({
             'drafts': 0, 'pending': 0, 'declined': 0, 'approved': 0, 'flagged': 0,
             'govt_revenue': 0, 'vendor_revenue': 0,
+            'productivity': {
+                'today': {'applications': 0, 'audits': 0},
+                'yesterday': {'applications': 0, 'audits': 0}
+            },
             'error': str(e)
         }, status=200) # Use 200 to keep UI alive
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_performance_history(request):
+    """Admin endpoint to get historical performance with filters"""
+    if request.user.role not in ('admin', 'super_admin'):
+        return Response({'error': 'Forbidden'}, status=403)
+
+    date_range = request.query_params.get('range', '30d')
+    pho_id = request.query_params.get('pho_id')
+    subcounty = request.query_params.get('subcounty')
+
+    today = timezone.now().date()
+    if date_range == 'today':
+        start_date = today
+    elif date_range == '7d':
+        start_date = today - timedelta(days=7)
+    elif date_range == '1y':
+        start_date = today - timedelta(days=365)
+    else: # 30d default
+        start_date = today - timedelta(days=30)
+
+    # Filter Querysets
+    app_qs = BusinessApplication.objects.filter(applied_at__date__gte=start_date)
+    insp_qs = Inspection.objects.filter(created_at__date__gte=start_date)
+
+    if pho_id:
+        app_qs = app_qs.filter(inspector_id=pho_id)
+        insp_qs = insp_qs.filter(inspector_id=pho_id)
+    
+    if subcounty:
+        app_qs = app_qs.filter(business__subcounty_name__iexact=subcounty)
+        insp_qs = insp_qs.filter(business__subcounty_name__iexact=subcounty)
+
+    # Group by date
+    apps_by_date = app_qs.annotate(date=TruncDate('applied_at')).values('date').annotate(count=Count('id')).order_by('date')
+    insps_by_date = insp_qs.annotate(date=TruncDate('created_at')).values('date').annotate(count=Count('id')).order_by('date')
+
+    # Merge data
+    data_map = {}
+    
+    # Initialize date range if 30d or 7d to ensure no gaps
+    if date_range in ('7d', '30d'):
+        curr = start_date
+        while curr <= today:
+            data_map[curr] = {'date': curr.isoformat(), 'applications': 0, 'audits': 0}
+            curr += timedelta(days=1)
+
+    for entry in apps_by_date:
+        d = entry['date']
+        if d not in data_map: data_map[d] = {'date': d.isoformat(), 'applications': 0, 'audits': 0}
+        data_map[d]['applications'] = entry['count']
+
+    for entry in insps_by_date:
+        d = entry['date']
+        if d not in data_map: data_map[d] = {'date': d.isoformat(), 'applications': 0, 'audits': 0}
+        data_map[d]['audits'] = entry['count']
+
+    sorted_history = sorted(data_map.values(), key=lambda x: x['date'], reverse=True)
+
+    return Response({
+        'history': sorted_history,
+        'summary': {
+            'total_applications': sum(item['applications'] for item in sorted_history),
+            'total_audits': sum(item['audits'] for item in sorted_history)
+        }
+    })

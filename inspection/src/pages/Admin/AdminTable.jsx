@@ -6,6 +6,7 @@ import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
 import Badge from '../../components/common/Badge';
 import ReportViewerModal from '../../components/common/ReportViewerModal';
+import { generateInspectionPDF } from '../../lib/pdfGenerator';
 import StaffEditModal from './modals/StaffEditModal';
 import AddStaffModal from './modals/AddStaffModal';
 import TransferZoneModal from './modals/TransferZoneModal';
@@ -23,6 +24,7 @@ export default function AdminTable({ tabType }) {
   const [zoneList, setZoneList] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isBulkActing, setIsBulkActing] = useState(false);
+  const [generatedInviteLink, setGeneratedInviteLink] = useState('');
 
   React.useEffect(() => {
     const loadMetadata = async () => {
@@ -31,7 +33,7 @@ export default function AdminTable({ tabType }) {
           apiFetch('/users/?role=pho'),
           apiFetch('/inspections/inspections/subcounties/')
         ]);
-        if (phos.data) setStaffList(phos.data);
+        if (phos) setStaffList(phos.results || phos || []);
         if (zones) setZoneList(zones);
       } catch (e) {
         console.error("Metadata load failed", e);
@@ -59,12 +61,12 @@ export default function AdminTable({ tabType }) {
      filters.approval_status = 'declined';
   } else if (tabType === 'payments') {
      filters.is_paid = true;
-  } else if (tabType === 'inspectors') {
-     filters.role__in = 'pho,nccg_officer,nccg_inspector,admin';
+  } else if (tabType === 'field_registrations') {
+     filters.is_new_registration = true;
   }
 
   const { data, loading, error, page, totalPages, setPage, refetch } = usePaginatedData({
-    table: tabType === 'inspectors' ? 'users' : 'inspections/inspections',
+    table: tabType === 'inspectors' ? 'users' : (tabType === 'field_registrations' ? 'inspections/businesses' : 'inspections/inspections'),
     filters,
     itemsPerPage: 15,
     authQuery: true
@@ -98,12 +100,34 @@ export default function AdminTable({ tabType }) {
     }
   };
 
+  const handleGenerateInvite = async () => {
+    try {
+      const invite = await apiFetch('/users/invites/', {
+        method: 'POST',
+        body: JSON.stringify({ role: 'admin' })
+      });
+      const baseUrl = window.location.origin;
+      setGeneratedInviteLink(`${baseUrl}/register-invite/${invite.id}`);
+    } catch (e) {
+      alert("Invite generation failed: " + e.message);
+    }
+  };
+
   const inspectReport = async (item) => {
     try {
       const fullRecord = await apiFetch(`/inspections/inspections/${item.id}/`);
       setSelectedItem(fullRecord);
     } catch (e) {
       alert('Failed to load full report details: ' + e.message);
+    }
+  };
+
+  const handleViewPDF = async (item) => {
+    try {
+      const fullRecord = await apiFetch(`/inspections/inspections/${item.id}/`);
+      generateInspectionPDF(fullRecord, { company_name: currentUser?.company_name, company_email: currentUser?.company_email });
+    } catch (e) {
+      alert('Error generating PDF: ' + e.message);
     }
   };
 
@@ -152,6 +176,14 @@ export default function AdminTable({ tabType }) {
             >
               {currentUser?.role === 'super_admin' ? '+ Register New Admin' : '+ Register New Staff'}
             </button>
+            {currentUser?.role === 'super_admin' && (
+              <button 
+                onClick={handleGenerateInvite}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded shadow-sm text-sm ml-2"
+              >
+                🔗 Generate Invite Link
+              </button>
+            )}
           </div>
         )}
         {tabType !== 'inspectors' && (
@@ -223,6 +255,8 @@ export default function AdminTable({ tabType }) {
         <Table 
           headers={tabType === 'inspectors' 
             ? ['Staff Member', 'Role', 'Company Alignment', 'Zone', 'Status', 'Actions'] 
+            : tabType === 'field_registrations'
+            ? ['Date Registered', 'Business Name', 'Permit/UBP', 'Zone', 'Ward', 'Registered By', 'Actions']
             : [
                 <input type="checkbox" checked={selectedIds.length === data.length && data.length > 0} onChange={selectAll} className="cursor-pointer" />,
                 'Wait', 'System ID', 'Date', 'Business Target', 'Service', 'Inspector', 'Flags', 'Actions']
@@ -278,6 +312,28 @@ export default function AdminTable({ tabType }) {
                   )}
                 </td>
               </tr>
+            ) : tabType === 'field_registrations' ? (
+              <tr key={item.id}>
+                <td className="p-4 text-xs text-slate-500 font-medium">
+                  {new Date(item.created_at).toLocaleDateString()}
+                </td>
+                <td className="p-4">
+                  <div className="font-bold text-slate-800">{item.business_name}</div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-tighter">{item.facility_type}</div>
+                </td>
+                <td className="p-4 text-sm font-semibold text-slate-600">
+                  {item.permit_no || <Badge type="amber">PENDING_UBP</Badge>}
+                </td>
+                <td className="p-4 text-xs font-bold text-slate-700">{item.subcounty_name}</td>
+                <td className="p-4 text-sm text-slate-600">{item.ward_name}</td>
+                <td className="p-4">
+                  <div className="text-xs font-bold text-emerald-700">{item.created_by_name}</div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-tighter">Field Agent</div>
+                </td>
+                <td className="p-4 flex gap-3">
+                  <button className="text-blue-600 hover:underline text-xs font-bold">Inspect Profile</button>
+                </td>
+              </tr>
             ) : (
               <tr key={item.id} className={selectedIds.includes(item.id) ? 'bg-emerald-500/5' : ''}>
                 <td className="p-4">
@@ -304,10 +360,15 @@ export default function AdminTable({ tabType }) {
                   {item.approval_status === 'pending' && <Badge type="amber">LOCKED_IN_QUEUE</Badge>}
                   {(item.approval_status !== 'pending' && item.payment_status !== 'flagged') && <Badge type="green">NOMINAL</Badge>}
                 </td>
-                <td className="p-4">
+                <td className="p-4 flex gap-3">
                   <button onClick={() => inspectReport(item)} className="text-slate-600 hover:text-blue-800 font-semibold text-sm transition-colors decoration-dashed decoration-1 underline underline-offset-4">
                     Inspect
                   </button>
+                  {item.approval_status === 'approved' && (
+                    <button onClick={() => handleViewPDF(item)} className="text-slate-400 hover:text-slate-700 font-semibold text-sm transition-colors underline underline-offset-4">
+                      PDF
+                    </button>
+                  )}
                 </td>
               </tr>
             )
@@ -346,6 +407,37 @@ export default function AdminTable({ tabType }) {
         inspection={selectedItem} 
         onClose={() => setSelectedItem(null)} 
       />
+
+      {generatedInviteLink && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl border border-slate-200 fade-in">
+             <h3 className="text-xl font-black text-slate-800 mb-2">Self-Registration Link Generated!</h3>
+             <p className="text-sm text-slate-500 mb-6">Share this unique link with the prospective Regional Admin. They will be able to set their own password and company details.</p>
+             
+             <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl mb-6 break-all font-mono text-xs text-blue-600 font-bold select-all">
+                {generatedInviteLink}
+             </div>
+
+             <div className="flex gap-4">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedInviteLink);
+                    alert("Link copied to clipboard!");
+                  }}
+                  className="flex-grow bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all"
+                >
+                  Copy Link
+                </button>
+                <button 
+                  onClick={() => setGeneratedInviteLink('')}
+                  className="px-6 py-3 rounded-xl font-bold text-slate-400 hover:text-slate-600 transition-all"
+                >
+                  Close
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

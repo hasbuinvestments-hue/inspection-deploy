@@ -21,6 +21,7 @@ const Finance = lazy(() => import('./pages/Finance/Finance'));
 const Admin = lazy(() => import('./pages/Admin/Admin'));
 const Superadmin = lazy(() => import('./pages/Superadmin/Superadmin'));
 const VerifyReport = lazy(() => import('./pages/Verify/VerifyReport'));
+const InviteRegistration = lazy(() => import('./pages/Invite/InviteRegistration'));
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/verify" element={<VerifyReport />} />
             <Route path="/verify/:code" element={<VerifyReport />} />
+            <Route path="/register-invite/:token" element={<InviteRegistration />} />
             
             <Route path="/pho" element={
               <ProtectedRoute allowedRoles={['pho', 'super_admin']}>

@@ -27,12 +27,18 @@ class Business(models.Model):
     
     location_lat = models.FloatField(null=True, blank=True)
     location_lng = models.FloatField(null=True, blank=True)
+    
+    # Track who registered this client from the field
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='registered_businesses')
+    is_new_registration = models.BooleanField(default=False)
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [
             models.Index(fields=['business_name', 'subcounty_name']),
+            models.Index(fields=['created_by']),
         ]
 
     def __str__(self):
@@ -79,6 +85,9 @@ class Inspection(models.Model):
     payment_ref = models.CharField(max_length=100, null=True, blank=True)
     payment_method = models.CharField(max_length=50, null=True, blank=True)
     payment_status = models.CharField(max_length=50, default='pending')
+    payment_date = models.DateTimeField(null=True, blank=True)
+    payment_verified_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments_verified')
+    payment_collected_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments_collected')
     finance_verification_notes = models.TextField(null=True, blank=True)
     
     # Audit Fee Breakdowns (KES)

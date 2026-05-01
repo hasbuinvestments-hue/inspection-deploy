@@ -1,23 +1,19 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../../contexts/useAuth';
 import nairobiLogo from '/nairobi_logo.png';
 
-// Placeholders for modularization
 import InspectionForm from './InspectionForm';
 import PHODashboardStats from './PHODashboardStats';
 import PHODrafts from './PHODrafts';
 import PHOActionRequired from './PHOActionRequired';
 import PHOArchive from './PHOArchive';
 import PHOApplications from './PHOApplications';
+import PHOMyClients from './PHOMyClients';
 
 export default function PHO() {
   const { profile, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('apply'); // 'apply' | 'new' | 'drafts' | 'issues' | 'archive'
+  const [activeTab, setActiveTab] = useState('apply');
   const [selectedDraft, setSelectedDraft] = useState(null);
-
-  const handleLogout = () => {
-    logout();
-  };
 
   const onResume = (draft) => {
     setSelectedDraft(draft);
@@ -31,7 +27,7 @@ export default function PHO() {
           <div className="pho-user-card">
             <p>PHO Officer</p>
             <strong>{profile?.full_name}</strong>
-            <button onClick={handleLogout} className="pho-logout-btn">Logout</button>
+            <button onClick={logout} className="pho-logout-btn">Logout</button>
           </div>
           <div className="pho-logo-wrap">
             <img src={nairobiLogo} alt="Logo" className="pho-logo" />
@@ -41,53 +37,35 @@ export default function PHO() {
         </header>
 
         <div className="pho-tabs">
-          <button
-            type="button"
-            onClick={() => setActiveTab('apply')}
-            className={`pho-tab ${activeTab === 'apply' ? 'active' : ''}`}
-          >
+          <button type="button" onClick={() => setActiveTab('apply')} className={`pho-tab ${activeTab === 'apply' ? 'active' : ''}`}>
             🎯 Apply for Audit
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('new')}
-            className={`pho-tab ${activeTab === 'new' ? 'active' : ''}`}
-          >
+          <button type="button" onClick={() => setActiveTab('clients')} className={`pho-tab ${activeTab === 'clients' ? 'active' : ''}`}>
+            🏢 My Clients
+          </button>
+          <button type="button" onClick={() => setActiveTab('new')} className={`pho-tab ${activeTab === 'new' ? 'active' : ''}`}>
             📋 Inspection Form
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('drafts')}
-            className={`pho-tab ${activeTab === 'drafts' ? 'active' : ''}`}
-          >
+          <button type="button" onClick={() => setActiveTab('drafts')} className={`pho-tab ${activeTab === 'drafts' ? 'active' : ''}`}>
             📝 My Drafts
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('issues')}
-            className={`pho-tab ${activeTab === 'issues' ? 'active' : ''}`}
-          >
+          <button type="button" onClick={() => setActiveTab('issues')} className={`pho-tab ${activeTab === 'issues' ? 'active' : ''}`}>
             ⚠️ Action Required
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('archive')}
-            className={`pho-tab ${activeTab === 'archive' ? 'active' : ''}`}
-          >
+          <button type="button" onClick={() => setActiveTab('archive')} className={`pho-tab ${activeTab === 'archive' ? 'active' : ''}`}>
             📜 History Archive
           </button>
         </div>
 
         <div className="fade-in py-6">
           <PHODashboardStats profile={profile} />
-          
-          {activeTab === 'apply' && (
-            <PHOApplications 
-              profile={profile} 
-              onApplied={() => setActiveTab('new')} 
-            />
-          )}
 
+          {activeTab === 'apply' && (
+            <PHOApplications profile={profile} onApplied={() => setActiveTab('new')} />
+          )}
+          {activeTab === 'clients' && (
+            <PHOMyClients profile={profile} />
+          )}
           {activeTab === 'new' && (
             <InspectionForm
               profile={profile}
@@ -98,7 +76,6 @@ export default function PHO() {
               }}
             />
           )}
-
           {activeTab === 'drafts' && <PHODrafts profile={profile} onResume={onResume} />}
           {activeTab === 'issues' && <PHOActionRequired profile={profile} onResume={onResume} />}
           {activeTab === 'archive' && <PHOArchive profile={profile} onResume={onResume} />}

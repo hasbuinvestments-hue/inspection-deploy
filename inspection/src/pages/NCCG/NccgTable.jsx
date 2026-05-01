@@ -6,11 +6,21 @@ import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
 import Badge from '../../components/common/Badge';
 import NccgReviewModal from './NccgReviewModal';
+import { generateInspectionPDF } from '../../lib/pdfGenerator';
 
 export default function NccgTable({ tabType }) {
   const { profile } = useAuth();
   const [selectedReport, setSelectedReport] = useState(null);
   const [isFetchingFull, setIsFetchingFull] = useState(false);
+
+  const handleViewPDF = async (item) => {
+    try {
+      const fullRecord = await apiFetch(`/inspections/inspections/${item.id}/`);
+      generateInspectionPDF(fullRecord, { company_name: profile?.company_name, company_email: profile?.company_email });
+    } catch (e) {
+      alert('Error generating PDF: ' + e.message);
+    }
+  };
   const [assignedPhos, setAssignedPhos] = useState([]);
   const [phosLoaded, setPhosLoaded] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -79,8 +89,8 @@ export default function NccgTable({ tabType }) {
   useEffect(() => {
     const fetchPhos = async () => {
       const url = profile?.role === 'super_admin' ? '/users/?role=pho' : `/users/?role=pho&assigned_nccg=${profile?.id}`;
-      const { data } = await apiFetch(url);
-      if (data) setAssignedPhos(data);
+      const result = await apiFetch(url);
+      setAssignedPhos(result?.results || result || []);
     };
     if (profile?.id) fetchPhos();
   }, [profile]);
@@ -174,8 +184,8 @@ export default function NccgTable({ tabType }) {
             <td className="p-4 text-xs">
               <Badge type={getBadgeType(item.approval_status)}>{item.approval_status?.toUpperCase() || 'UNKNOWN'}</Badge>
             </td>
-            <td className="p-4">
-              <button 
+            <td className="p-4 flex gap-3">
+              <button
                 onClick={async () => {
                   setIsFetchingFull(true);
                   try {
@@ -192,6 +202,14 @@ export default function NccgTable({ tabType }) {
               >
                 {item.approval_status === 'pending' ? 'Review Form' : 'Details'}
               </button>
+              {item.approval_status === 'approved' && (
+                <button
+                  onClick={() => handleViewPDF(item)}
+                  className="text-slate-400 hover:text-slate-700 font-semibold text-sm transition-colors underline underline-offset-4"
+                >
+                  PDF
+                </button>
+              )}
             </td>
           </tr>
         ))}

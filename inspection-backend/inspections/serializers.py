@@ -5,20 +5,33 @@ from inspections.models import (
 )
 
 class BusinessSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Business
         fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at', 'created_by']
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return "System Import"
+        return obj.created_by.full_name or obj.created_by.email or obj.created_by.username
 
 class BusinessApplicationSerializer(serializers.ModelSerializer):
     business_details = BusinessSerializer(source='business', read_only=True)
-    inspector_name = serializers.ReadOnlyField(source='inspector.username')
+    inspector_name = serializers.SerializerMethodField()
     business_name = serializers.ReadOnlyField(source='business.business_name')
     permit_no = serializers.ReadOnlyField(source='business.permit_no')
+    
+    def get_inspector_name(self, obj):
+        if not obj.inspector:
+            return "Unassigned"
+        return obj.inspector.full_name or obj.inspector.email or obj.inspector.username
     
     class Meta:
         model = BusinessApplication
         fields = ['id', 'business', 'inspector', 'status', 'applied_at', 'inspector_name', 'business_name', 'permit_no']
-        read_only_fields = ['inspector', 'applied_at']
+        read_only_fields = ['applied_at']
 
 class SystemSettingSerializer(serializers.ModelSerializer):
     class Meta:

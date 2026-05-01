@@ -43,18 +43,21 @@ export default function NccgMap() {
 
   const phosLoaded = isSuperAdmin || assignedState.profileId === profile?.id;
 
+  const hasNoPhos = !isSuperAdmin && assignedState.phosIds.length === 0;
+
   const { data: reports, loading } = usePaginatedData({
     table: 'inspections/inspections',
-    filters: { 
+    filters: {
       approval_status: 'pending',
       ...(isSuperAdmin ? {} : { inspector__in: assignedState.phosIds.join(',') })
     },
-    skip: !phosLoaded,
+    skip: !phosLoaded || hasNoPhos,
     itemsPerPage: 100,
     authQuery: true
   });
 
   if (loading || !phosLoaded) return <div className="p-8 text-center text-slate-500">Loading map...</div>;
+  if (hasNoPhos) return <div className="p-8 text-center text-slate-500">No PHOs assigned to your queue yet.</div>;
 
   const validMarkers = (reports || []).filter(r => r.gps_coordinates?.lat && r.gps_coordinates?.lng);
 

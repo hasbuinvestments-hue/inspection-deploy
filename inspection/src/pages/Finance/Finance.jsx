@@ -11,6 +11,7 @@ export default function Finance() {
   const tabs = [
     { id: 'unverified', label: '⏳ Pending Verification' },
     { id: 'verified', label: '✅ Verified & Settled' },
+    { id: 'field_registrations', label: '📍 Field Registrations' },
     { id: 'history', label: '📜 Collection History' },
     { id: 'overdue', label: '⚠️ Overdue / Unpaid' },
     { id: 'fees', label: '📖 Fee Schedule' }

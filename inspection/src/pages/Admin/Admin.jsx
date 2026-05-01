@@ -16,6 +16,7 @@ export default function Admin() {
     { id: 'applications', label: '🎯 Staff Applications' },
     { id: 'alerts', label: '⚠️ Alerts & Exceptions' },
     { id: 'reports', label: '📋 All Reports' },
+    { id: 'field_registrations', label: '📍 Field Registrations' },
     { id: 'declined', label: '❌ Declined Reports' },
     { id: 'payments', label: '💰 Revenue & Overdue' },
     { id: 'map', label: '🗺️ Map View' }

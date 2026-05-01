@@ -19,29 +19,54 @@ class BusinessViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        from django.db.models import Q
         # Admins and Super Admins see everything (Registry is universal)
         if user.role in ('super_admin', 'admin', 'finance_manager'):
             return Business.objects.all()
             
-        applied_by_me = self.request.query_params.get('applied_by_me') == 'true'
+        params = self.request.query_params
+        applied_by_me = params.get('applied_by_me') == 'true'
+        registered_by_me = params.get('registered_by_me') == 'true'
 
         if user.role in ('pho', 'nccg_inspector'):
             subcounty = (user.subcounty or '').strip()
-            if not subcounty:
-                return Business.objects.none()
-            
-            qs = Business.objects.filter(subcounty_name__iexact=subcounty)
-            
+
+            # Only show businesses this PHO personally field-registered
+            if registered_by_me:
+                return Business.objects.filter(created_by=user).order_by('-created_at')
+
+            # PHOs see their zone + what they personally registered
+            query = Q(subcounty_name__iexact=subcounty) | Q(created_by=user)
+
             if applied_by_me and user.role == 'pho':
-                # Filter by businesses that have an active application by this PHO
                 applied_ids = BusinessApplication.objects.filter(
                     inspector=user, status='active'
                 ).values_list('business_id', flat=True)
-                return qs.filter(id__in=applied_ids)
+                return Business.objects.filter(Q(id__in=applied_ids) | Q(created_by=user))
 
-            return qs
+            if not subcounty:
+                return Business.objects.filter(created_by=user)
+
+            return Business.objects.filter(query)
 
         return Business.objects.none()
+ 
+    def perform_create(self, serializer):
+        user = self.request.user
+        # Automatically tag as field registration if PHO creates it
+        is_new = user.role == 'pho'
+        instance = serializer.save(
+            created_by=user, 
+            is_new_registration=is_new,
+            subcounty_name=user.subcounty or serializer.validated_data.get('subcounty_name')
+        )
+        
+        if is_new:
+            from .utils import log_activity
+            log_activity(user, 'FIELD_CLIENT_REGISTERED', {
+                'business_id': str(instance.id),
+                'business_name': instance.business_name
+            })
 
     @action(detail=False, methods=['GET'], permission_classes=[permissions.IsAuthenticated], url_path='debug-subcounties')
     def debug_subcounties(self, request):
@@ -124,7 +149,17 @@ class InspectionViewSet(viewsets.ModelViewSet):
         return Inspection.objects.filter(inspector=user)
 
     def perform_create(self, serializer):
-        serializer.save(inspector=self.request.user)
+        from .utils import log_activity
+        user = self.request.user
+        # Capture the inspector's name at the time of creation for historical accuracy
+        name = user.full_name or user.username
+        instance = serializer.save(inspector=user, inspector_name=name)
+        
+        log_activity(user, 'INSPECTION_CREATED', {
+            'inspection_id': str(instance.id),
+            'business_name': instance.business.business_name if instance.business else "Unknown",
+            'is_draft': instance.is_draft
+        })
 
     def partial_update(self, request, *args, **kwargs):
         from .utils import log_activity
@@ -163,33 +198,40 @@ class InspectionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['POST'], permission_classes=[permissions.IsAuthenticated], url_path='dispatch-email')
     def dispatch_email(self, request):
         """
-        Server-side email dispatcher using Resend.
-        Uses the creator's Company Official Email for branding.
+        Tiered Email Dispatcher:
+        1. Gmail SMTP (via App Password)
+        2. Custom Domain (via Resend)
+        3. Fallback (via Resend + Reply-To)
         """
         user = request.user
         to_email = request.data.get('to')
-        subject = request.data.get('subject')
+        subject = request.data.get('subject', 'Inspection Update')
         html_content = request.data.get('html')
-        template_id = request.data.get('template_id')
         variables = request.data.get('variables', {})
 
         if not to_email:
             return Response({'error': 'Recipient email (to) is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1. Determine Company Identity
+        # 1. Determine Company Identity & Method
+        import os
+        system_email = os.getenv('NOREPLY_EMAIL', 'noreply@nccg.go.ke')
         sender_name = "NCCG Inspections"
-        reply_to_email = "inspections@nccg.go.ke"
-        
-        # Look up the creator's company details
-        creator = user.created_by
-        if creator and creator.role == 'admin':
-            if creator.company_name:
-                sender_name = creator.company_name
-            if creator.company_email:
-                reply_to_email = creator.company_email
+        reply_to_email = system_email
+        send_method = 'fallback'
+        config = {}
 
-        # 2. Prepare HTML (if not provided, we could use templates, but for now we expect HTML from frontend or generate it)
-        # Note: In a production app, we should use Django templates here.
+        # Look up the regional admin (the person who created the PHO)
+        admin = user.created_by if user.role != 'admin' else user
+        if admin:
+            sender_name = admin.company_name or sender_name
+            reply_to_email = admin.company_email or reply_to_email
+            send_method = getattr(admin, 'email_send_method', 'fallback')
+            config = {
+                'gmail_password': admin.company_gmail_password,
+                'sending_domain': admin.custom_sending_domain,
+                'company_email': admin.company_email
+            }
+
         if not html_content:
             # Basic fallback template
             html_content = f"""
@@ -199,29 +241,45 @@ class InspectionViewSet(viewsets.ModelViewSet):
                 <p>Please find the requested document regarding <b>{variables.get('business_name', 'your inspection')}</b>.</p>
                 <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
                 <p style="font-size: 12px; color: #64748b;">
-                    Sent by {user.full_name or user.username} ({user.role.upper()}) on behalf of {sender_name}.
+                    Sent on behalf of {sender_name}.
                     Replies will be sent to {reply_to_email}.
                 </p>
             </div>
             """
 
-        # 3. Dispatch via Resend (Simulation if no key)
-        import os
-        import json
-        import urllib.request
-        from rest_framework.exceptions import APIException
+        # 2. Dispatch Logic
+        import os, json, urllib.request, smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
 
+        # CASE A: Gmail SMTP
+        if send_method == 'gmail' and config.get('gmail_password') and config.get('company_email'):
+            try:
+                msg = MIMEMultipart()
+                msg['From'] = f"{sender_name} <{config['company_email']}>"
+                msg['To'] = to_email
+                msg['Subject'] = subject
+                msg.attach(MIMEText(html_content, 'html'))
+
+                server = smtplib.SMTP('smtp.gmail.com', 587)
+                server.starttls()
+                server.login(config['company_email'], config['gmail_password'])
+                server.send_message(msg)
+                server.quit()
+                return Response({'message': 'Dispatched via Gmail SMTP', 'method': 'gmail'})
+            except Exception as e:
+                return Response({'error': f"Gmail SMTP Failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # CASE B: Resend (Custom Domain or Fallback)
         api_key = os.getenv('RESEND_API_KEY')
-        
         if not api_key:
-            # Log the simulation
-            print(f"[Email Simulation] To: {to_email} | From: {sender_name} | Reply-To: {reply_to_email}")
-            return Response({
-                'message': 'Simulation: Email dispatched successfully',
-                'simulated': True,
-                'sender': sender_name,
-                'reply_to': reply_to_email
-            })
+            print(f"[Email Simulation] To: {to_email} | Method: {send_method} | From: {sender_name}")
+            return Response({'message': 'Simulation: Email dispatched', 'simulated': True})
+
+        if send_method == 'custom_domain' and config.get('sending_domain'):
+            from_address = f"{sender_name} <noreply@{config['sending_domain']}>"
+        else:
+            from_address = f"{sender_name} <{system_email}>"
 
         try:
             req = urllib.request.Request(
@@ -232,20 +290,19 @@ class InspectionViewSet(viewsets.ModelViewSet):
                     'Authorization': f'Bearer {api_key}'
                 },
                 data=json.dumps({
-                    'from': f"{sender_name} <inspections@nccg.go.ke>", # Domain must be verified in Resend
+                    'from': from_address,
                     'to': [to_email],
                     'reply_to': reply_to_email,
-                    'subject': subject or "Inspection Update",
+                    'subject': subject,
                     'html': html_content
                 }).encode('utf-8')
             )
             
             with urllib.request.urlopen(req) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
-                return Response(res_data)
-
+                return Response({**res_data, 'method': send_method, 'from': from_address})
         except Exception as e:
-            raise APIException(f"Failed to dispatch email via Resend: {str(e)}")
+            return Response({'error': f"Resend Failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['GET'], permission_classes=[permissions.AllowAny], url_path='verify/(?P<report_id>[^/.]+)')
     def verify_report_public(self, request, report_id=None):
@@ -334,10 +391,83 @@ class BusinessApplicationViewSet(viewsets.ModelViewSet):
         return BusinessApplication.objects.filter(inspector=user)
 
     def perform_create(self, serializer):
-        serializer.save(inspector=self.request.user)
+        from .utils import log_activity
+        business = serializer.validated_data.get('business')
+        user = self.request.user
+        
+        # 1. Check if CURRENT user already has an active application (Integrity Check)
+        if BusinessApplication.objects.filter(business=business, inspector=user, status='active').exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'business': 'You already have an active application for this business.'})
+
+        # 2. Check if ANY OTHER officer has an active application (Global Lock)
+        exists = BusinessApplication.objects.filter(
+            business=business, 
+            status='active'
+        ).exclude(inspector=user).exists()
+        
+        if exists:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'business': 'This business is already locked by another officer for an active audit.'})
+            
+        instance = serializer.save(inspector=user)
+        
+        log_activity(user, 'BUSINESS_APPLICATION_CREATED', {
+            'application_id': str(instance.id),
+            'business_name': instance.business.business_name
+        })
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        # Only allow re-assignment by Admins/Superadmins
+        if 'inspector' in self.request.data and user.role not in ('admin', 'super_admin'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only administrators can re-assign applications to other officers.")
+        
+        serializer.save()
+
+class IsAdminOrSuperAdmin(permissions.BasePermission):
+    """
+    Allows access only to global Admins and Super Admins.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and 
+                   request.user.role in ('super_admin', 'admin'))
 
 class SystemSettingViewSet(viewsets.ModelViewSet):
     queryset = SystemSetting.objects.all()
     serializer_class = SystemSettingSerializer
-    permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'key'
+
+    def get_permissions(self):
+        # Only Admins/Superadmins can update global system settings (like fees)
+        if self.action in ['update', 'partial_update', 'create', 'destroy']:
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    def _log_setting_change(self, request, instance, old_value):
+        from .utils import log_activity
+        log_activity(request.user, 'SETTING_CHANGED', {
+            'key': instance.key,
+            'label': instance.label or instance.key,
+            'old_value': old_value,
+            'new_value': instance.value,
+        })
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        old_value = instance.value
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        if instance.value != old_value:
+            self._log_setting_change(request, instance, old_value)
+        return response
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        old_value = instance.value
+        response = super().partial_update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        if instance.value != old_value:
+            self._log_setting_change(request, instance, old_value)
+        return response

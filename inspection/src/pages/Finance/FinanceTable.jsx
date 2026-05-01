@@ -33,6 +33,8 @@ export default function FinanceTable({ tabType }) {
     filters.is_paid = false;
     filters.status = 'completed';
     filters.payment_status__in = 'pending,unpaid';
+  } else if (tabType === 'field_registrations') {
+    filters.is_new_registration = true;
   }
 
   if (methodFilter) {
@@ -41,14 +43,14 @@ export default function FinanceTable({ tabType }) {
 
   React.useEffect(() => {
     const loadCollectors = async () => {
-      const { data } = await apiFetch('/users/?role=pho');
-      if (data) setCollectors(data);
+      const result = await apiFetch('/users/?role=pho');
+      setCollectors(result?.results || result || []);
     };
     loadCollectors();
   }, []);
 
   const { data, loading, error, page, totalPages, setPage, refetch } = usePaginatedData({
-    table: 'inspections/inspections',
+    table: tabType === 'field_registrations' ? 'inspections/businesses' : 'inspections/inspections',
     filters,
     itemsPerPage: 10
   });
@@ -83,8 +85,7 @@ export default function FinanceTable({ tabType }) {
     }
 
     try {
-      setModalType('verify');
-      const { error } = await apiFetch(`/inspections/inspections/${selectedPayment.id}/`, {
+      await apiFetch(`/inspections/inspections/${selectedPayment.id}/`, {
         method: 'PATCH',
         body: JSON.stringify({
           payment_status: 'verified_by_finance',
@@ -92,9 +93,8 @@ export default function FinanceTable({ tabType }) {
           payment_ref: verificationRef
         })
       });
-      if (error) throw error;
-      
       setSelectedPayment(null);
+      setModalType('view');
       refetch();
     } catch (e) {
       alert("Error verifying: " + e.message);
@@ -108,17 +108,15 @@ export default function FinanceTable({ tabType }) {
     }
 
     try {
-      setModalType('flag');
-      const { error } = await apiFetch(`/inspections/inspections/${selectedPayment.id}/`, {
+      await apiFetch(`/inspections/inspections/${selectedPayment.id}/`, {
         method: 'PATCH',
         body: JSON.stringify({
           payment_status: 'flagged',
           finance_verification_notes: notes
         })
       });
-      if (error) throw error;
-      
       setSelectedPayment(null);
+      setModalType('view');
       refetch();
     } catch (e) {
       alert("Error flagging: " + e.message);
@@ -209,10 +207,35 @@ export default function FinanceTable({ tabType }) {
         </button>
       </div>
       <Table 
-        headers={['Business', 'Date', 'Method', 'Amount', 'Submitted By', 'Status', 'Actions']}
+        headers={tabType === 'field_registrations' 
+          ? ['Date Registered', 'Business Name', 'Permit/UBP', 'Zone', 'Ward', 'Registered By', 'Actions']
+          : ['Business', 'Date', 'Method', 'Amount', 'Submitted By', 'Status', 'Actions']}
         emptyMessage="No payments matching this criteria."
       >
         {data.map(item => (
+          tabType === 'field_registrations' ? (
+              <tr key={item.id}>
+                <td className="p-4 text-xs text-slate-500 font-medium">
+                  {new Date(item.created_at).toLocaleDateString()}
+                </td>
+                <td className="p-4">
+                  <div className="font-bold text-slate-800">{item.business_name}</div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-tighter">{item.facility_type}</div>
+                </td>
+                <td className="p-4 text-sm font-semibold text-slate-600">
+                  {item.permit_no || <Badge type="amber">PENDING_UBP</Badge>}
+                </td>
+                <td className="p-4 text-xs font-bold text-slate-700">{item.subcounty_name}</td>
+                <td className="p-4 text-sm text-slate-600">{item.ward_name}</td>
+                <td className="p-4">
+                  <div className="text-xs font-bold text-emerald-700">{item.created_by_name}</div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-tighter">Field Agent</div>
+                </td>
+                <td className="p-4 flex gap-3">
+                  <button className="text-blue-600 hover:underline text-xs font-bold">Review</button>
+                </td>
+              </tr>
+          ) : (
           <tr key={item.id}>
             <td className="p-4">
                <p className="font-medium text-slate-900">{item.businesses?.business_name || 'N/A'}</p>
@@ -246,6 +269,7 @@ export default function FinanceTable({ tabType }) {
               </button>
             </td>
           </tr>
+          )
         ))}
       </Table>
       

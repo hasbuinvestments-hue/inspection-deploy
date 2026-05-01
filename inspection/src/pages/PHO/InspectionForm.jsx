@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../lib/api';
 import { sendClientInvoice, sendClientReport } from '../../lib/emailService';
 import { compressImage } from '../../lib/imageCompression';
+import { logError } from '../../lib/logger';
 import Badge from '../../components/common/Badge';
 
 export default function InspectionForm({ profile, initialData, onComplete }) {
@@ -24,7 +25,7 @@ export default function InspectionForm({ profile, initialData, onComplete }) {
      treatment_methods: [],
      issues_found: [],
      pest_sightings: { rodents: false, bedbugs: false, bedbug_count: null, other: false, other_description: '' },
-     housekeeping_rating: '',
+     housekeeping_rating: 'Good',
      waste_management_rating: 'Good', 
      stacking_rating: 'Good', 
      overall_sanitation_rating: 'Good',
@@ -53,7 +54,49 @@ export default function InspectionForm({ profile, initialData, onComplete }) {
   const [search, setSearch] = useState('');
   const [searchError, setSearchError] = useState('');
 
-      setStep(2); 
+  useEffect(() => {
+    if (initialData) {
+      setFormData(prev => ({
+      ...prev,
+      client_id: initialData.business || initialData.business_id || null,
+      _clientObj: initialData.businesses || null,
+      inspector_name: initialData.inspector_name || prev.inspector_name,
+      inspection_date: initialData.inspection_date
+        ? initialData.inspection_date.slice(0, 16)
+        : prev.inspection_date,
+      next_inspection_date: initialData.next_inspection_date
+        ? initialData.next_inspection_date.slice(0, 16)
+        : '',
+      service_type: initialData.service_type || '',
+      personnel: initialData.personnel || [],
+      areas_affected: initialData.areas_affected || [],
+      pest_types: initialData.pest_types || [],
+      chemicals_used: initialData.chemicals_used || [],
+      chemical_dosages: initialData.chemical_dosages || [],
+      treatment_methods: initialData.treatment_methods || [],
+      issues_found: initialData.issues_found || [],
+      pest_sightings: initialData.pest_sightings || prev.pest_sightings,
+      housekeeping_rating: initialData.housekeeping_rating || '',
+      waste_management_rating: initialData.waste_management_rating || 'Good',
+      stacking_rating: initialData.stacking_rating || 'Good',
+      overall_sanitation_rating: initialData.overall_sanitation_rating || 'Good',
+      recommendations: initialData.recommendations || [],
+      notes: initialData.notes || '',
+      photo_urls: initialData.photo_urls || [],
+      photo_meta: initialData.photo_meta || [],
+      fee_category: initialData.fee_category || '',
+      fee_premise: initialData.fee_premise || '',
+      calculated_fee: initialData.calculated_fee || 0,
+      ipm_audit: initialData.ipm_audit || 0,
+      ipm_nccg: initialData.ipm_nccg || 0,
+      ipm_vendor: initialData.ipm_vendor || 0,
+      is_paid: initialData.is_paid || false,
+      amount_paid: initialData.amount_paid || '',
+      payment_ref: initialData.payment_ref || '',
+      payment_method: initialData.payment_method || 'Cash',
+    }));
+    setInspectionId(initialData.id);
+    setStep(2);
     }
   }, [initialData]);
 
@@ -203,9 +246,9 @@ export default function InspectionForm({ profile, initialData, onComplete }) {
         photo_urls: photoUrls,
         photo_meta: photoMeta,
         notes: formData.notes,
-        status: isDraft ? 'draft' : 'completed',
+        status: 'completed',
         is_draft: isDraft,
-        approval_status: isDraft ? 'draft' : 'pending',
+        approval_status: 'pending',
         fee_category: formData.fee_category,
         fee_premise: formData.fee_premise,
         calculated_fee: formData.calculated_fee,
@@ -303,6 +346,7 @@ export default function InspectionForm({ profile, initialData, onComplete }) {
       }
     } catch(e) { 
       console.error(e);
+      logError(e, { source: 'InspectionForm.submitReport', metadata: { actionPhase, formData: { ...formData, media: [] } } });
       alert("Submission failed: " + e.message);
     } finally {
       setLoading(false);

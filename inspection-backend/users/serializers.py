@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from users.models import User
+from users.models import User, InviteToken
 
 class UserSerializer(serializers.ModelSerializer):
     works_for = serializers.SerializerMethodField()
@@ -10,7 +10,8 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'role', 'department', 'subcounty', 
             'assigned_nccg', 'full_name', 'avatar_url', 'status', 
             'last_login_at', 'date_joined', 'created_by', 'works_for',
-            'company_name', 'company_email'
+            'company_name', 'company_email', 'email_send_method', 
+            'custom_sending_domain', 'domain_verified'
         ]
         read_only_fields = ['id', 'date_joined', 'last_login_at', 'created_by', 'works_for']
 
@@ -28,7 +29,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'email', 'password', 'full_name', 'role', 'department', 
-            'subcounty', 'assigned_nccg', 'company_name', 'company_email'
+            'subcounty', 'assigned_nccg', 'company_name', 'company_email',
+            'company_gmail_password', 'custom_sending_domain', 'email_send_method'
         ]
 
     def create(self, validated_data):
@@ -48,6 +50,20 @@ class RegisterSerializer(serializers.ModelSerializer):
             assigned_nccg=validated_data.get('assigned_nccg', None),
             company_name=validated_data.get('company_name', ''),
             company_email=validated_data.get('company_email', ''),
+            company_gmail_password=validated_data.get('company_gmail_password', None),
+            custom_sending_domain=validated_data.get('custom_sending_domain', ''),
+            email_send_method=validated_data.get('email_send_method', 'fallback'),
             created_by=created_by
         )
         return user
+
+class InviteTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InviteToken
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'used', 'created_by']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['created_by'] = request.user
+        return super().create(validated_data)

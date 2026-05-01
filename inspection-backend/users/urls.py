@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
-    UserViewSet, me, admin_create_user, admin_purge_user, resolve_staff_login_email, transfer_subcounty
+    UserViewSet, me, admin_create_user, admin_purge_user, 
+    resolve_staff_login_email, transfer_subcounty, admin_reset_password
 )
 from rest_framework.routers import DefaultRouter
 
@@ -12,5 +13,6 @@ urlpatterns = [
     path('admin-create/', admin_create_user, name='admin_create_user'),
     path('admin-purge/', admin_purge_user, name='admin_purge_user'),
     path('transfer-subcounty/', transfer_subcounty, name='transfer_subcounty'),
+    path('admin-reset-password/', admin_reset_password, name='admin_reset_password'),
     path('resolve-email/', resolve_staff_login_email, name='resolve_staff_login_email'),
 ] + router.urls
