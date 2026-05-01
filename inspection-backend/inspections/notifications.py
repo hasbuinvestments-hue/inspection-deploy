@@ -15,14 +15,15 @@ class NotificationService:
         business_name = business.business_name
         phone = business.owner_phone
         email = business.owner_email
+        ubp = business.permit_no or "PENDING"
         
-        message = f"Hello {owner_name}, your business '{business_name}' has been successfully registered in the Nairobi Inspection Registry. Ref: {business.permit_no or business.id}"
+        message = f"Hello {owner_name}, your business '{business_name}' (UBP: {ubp}) has been successfully registered in the Nairobi Inspection Registry. You will receive digital audit reports on this number/email."
         
-        # 1. Email via Resend (Already configured in project)
+        # 1. Email via Resend
         if email:
-            NotificationService._send_email(email, "Business Registration Confirmation", message)
+            NotificationService._send_email(email, f"Registration: {business_name}", message)
             
-        # 2. WhatsApp/SMS Placeholder (Can be linked to Twilio/AfricasTalking)
+        # 2. WhatsApp/SMS via Twilio
         if phone:
             NotificationService._send_sms_whatsapp(phone, message)
             
@@ -30,7 +31,7 @@ class NotificationService:
             'type': 'registration',
             'business_id': str(business.id),
             'business_name': business_name,
-            'recipient_email': email,
+            'ubp': ubp,
             'recipient_phone': phone
         })
 
@@ -43,11 +44,12 @@ class NotificationService:
         owner_name = business.owner_name or "Client"
         phone = business.owner_phone
         email = business.owner_email
+        ubp = business.permit_no or "PENDING"
         
-        message = f"Hello {owner_name}, an inspection for '{business.business_name}' has been completed by Inspector {inspection.inspector_name}. Status: {inspection.approval_status.upper()}."
+        message = f"Hello {owner_name}, an inspection for '{business.business_name}' (UBP: {ubp}) was completed by Inspector {inspection.inspector_name}. Status: {inspection.approval_status.upper()}. Fee: KES {inspection.calculated_fee}."
         
         if email:
-            NotificationService._send_email(email, "Inspection Audit Completed", message)
+            NotificationService._send_email(email, f"Inspection Audit: {business.business_name}", message)
             
         if phone:
             NotificationService._send_sms_whatsapp(phone, message)
@@ -56,7 +58,7 @@ class NotificationService:
             'type': 'audit_completion',
             'inspection_id': str(inspection.id),
             'business_name': business.business_name,
-            'recipient_email': email,
+            'ubp': ubp,
             'recipient_phone': phone
         })
 
