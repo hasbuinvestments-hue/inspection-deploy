@@ -57,7 +57,10 @@ export default function SyncManager() {
             if (auditData.pending_photos && auditData.pending_photos.length > 0) {
               const photoUrls = [];
               const photoMeta = [];
-              for (const p of auditData.pending_photos) {
+              const successfullyUploadedIndices = [];
+
+              for (let i = 0; i < auditData.pending_photos.length; i++) {
+                const p = auditData.pending_photos[i];
                 try {
                   const uploadData = new FormData();
                   uploadData.append('file', p.file);
@@ -72,14 +75,24 @@ export default function SyncManager() {
                     caption: p.caption, 
                     issue: p.issue 
                   });
+                  successfullyUploadedIndices.push(i);
                 } catch (imgErr) {
-                  // If image fails, we can skip or keep it, 
-                  // but let's try to proceed with at least the text data
+                  // Silent fail for individual image, will try again if the whole sync is retried
                 }
               }
+              
               auditData.photo_urls = [...(auditData.photo_urls || []), ...photoUrls];
               auditData.photo_meta = [...(auditData.photo_meta || []), ...photoMeta];
-              delete auditData.pending_photos;
+              
+              // Filter out successfully uploaded photos from the pending list
+              auditData.pending_photos = auditData.pending_photos.filter((_, idx) => !successfullyUploadedIndices.includes(idx));
+              
+              // If we still have pending photos (meaning some failed), throw to stop deletion
+              if (auditData.pending_photos.length > 0) {
+                throw new Error('Some photos failed to upload. Will retry later.');
+              } else {
+                delete auditData.pending_photos;
+              }
             }
 
             const url = auditData.inspectionId 

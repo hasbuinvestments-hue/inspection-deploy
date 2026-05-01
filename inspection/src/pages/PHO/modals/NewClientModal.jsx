@@ -23,11 +23,31 @@ export default function NewClientModal({ profile, isOpen, onClose, onSuccess, cl
     // On-site contact person
     contact_person_name: clientToEdit?.contact_person_name || '',
     contact_person_email: clientToEdit?.contact_person_email || '',
-    contact_person_phone: clientToEdit?.contact_person_phone || ''
+    contact_person_phone: clientToEdit?.contact_person_phone || '',
+    location_lat: clientToEdit?.location_lat || null,
+    location_lng: clientToEdit?.location_lng || null
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Capture GPS coordinates on mount (field registration)
+  useState(() => {
+    if (!clientToEdit && "geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setFormData(prev => ({
+            ...prev,
+            location_lat: pos.coords.latitude,
+            location_lng: pos.coords.longitude
+          }));
+        },
+        () => {
+          // Silent fail - user can still register without GPS
+        }
+      );
+    }
+  }, []);
 
   if (!isOpen) return null;
 
