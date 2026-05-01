@@ -1,26 +1,12 @@
-import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { usePaginatedData } from '../../hooks/usePaginatedData';
-
-// Fix for default marker icons in React-Leaflet
-import L from 'leaflet';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
-let DefaultIcon = L.icon({
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
-});
-L.Marker.prototype.options.icon = DefaultIcon;
 
 export default function MapOverview() {
   const { data: reports, loading } = usePaginatedData({
     table: 'inspections/inspections',
-    filters: { approval_status: 'approved', is_draft: false },
-    itemsPerPage: 100, // Load many for the map
+    filters: { is_draft: false },
+    itemsPerPage: 500, // Higher limit for heatmap coverage
     authQuery: true
   });
 
@@ -28,23 +14,42 @@ export default function MapOverview() {
 
   const validMarkers = (reports || []).filter(r => r.gps_coordinates?.lat && r.gps_coordinates?.lng);
 
+  const getMarkerColor = (date) => {
+    const monthsAgo = (new Date() - new Date(date)) / (1000 * 60 * 60 * 24 * 30);
+    if (monthsAgo > 6) return '#ef4444'; // Red
+    if (monthsAgo > 3) return '#f59e0b'; // Amber
+    return '#10b981'; // Emerald
+  };
+
   return (
-    <div className="h-[600px] w-full rounded-xl overflow-hidden border border-slate-200">
+    <div className="h-full w-full rounded-xl overflow-hidden">
       <MapContainer center={[-1.2921, 36.8219]} zoom={12} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         {validMarkers.map(r => (
-          <Marker key={r.id} position={[r.gps_coordinates.lat, r.gps_coordinates.lng]}>
+          <CircleMarker 
+            key={r.id} 
+            center={[r.gps_coordinates.lat, r.gps_coordinates.lng]}
+            radius={8}
+            pathOptions={{ 
+              color: getMarkerColor(r.inspection_date),
+              fillColor: getMarkerColor(r.inspection_date),
+              fillOpacity: 0.7 
+            }}
+          >
             <Popup>
-              <div className="p-1">
-                <p className="font-bold text-slate-800">{r.businesses?.business_name}</p>
-                <p className="text-xs text-slate-500">Inspector: {r.inspector_name}</p>
-                <p className="text-xs text-slate-500">Date: {new Date(r.inspection_date).toLocaleDateString()}</p>
+              <div className="p-1 min-w-[150px]">
+                <p className="font-bold text-slate-800 text-sm mb-1">{r.businesses?.business_name}</p>
+                <div className="flex flex-col gap-1 text-[10px] text-slate-500">
+                  <span className="flex justify-between"><span>Last Audit:</span> <b className="text-slate-700">{new Date(r.inspection_date).toLocaleDateString()}</b></span>
+                  <span className="flex justify-between"><span>Status:</span> <b className="uppercase">{r.approval_status}</b></span>
+                  <span className="flex justify-between"><span>Inspector:</span> <b>{r.inspector_name}</b></span>
+                </div>
               </div>
             </Popup>
-          </Marker>
+          </CircleMarker>
         ))}
       </MapContainer>
     </div>

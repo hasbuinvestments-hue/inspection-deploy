@@ -348,8 +348,19 @@ export default function InspectionForm({ profile, initialData, onComplete }) {
     } catch(e) { 
       if (e.message === 'OFFLINE_ERROR') {
         try {
-          await saveSubmission('audit', { ...payload, inspectionId });
-          alert('OFFLINE: Audit saved locally on your phone. Photos were NOT uploaded but the report data is safe and will sync when you are back online.');
+          // Keep the files for later upload
+          const offlinePayload = { 
+            ...payload, 
+            pending_photos: formData.media.map(m => ({
+              file: m.file, // IndexedDB stores Blobs/Files
+              name: m.file.name,
+              caption: m.caption,
+              issue: m.issue
+            }))
+          };
+          
+          await saveSubmission('audit', { ...offlinePayload, inspectionId });
+          alert('OFFLINE: Audit saved locally. Photos are stored on your phone and will be uploaded automatically when you are back online.');
           if (onComplete) onComplete();
           return;
         } catch (offlineErr) {

@@ -51,12 +51,43 @@ export default function SyncManager() {
               body: JSON.stringify(item.data)
             });
           } else if (item.type === 'audit') {
-            const url = item.data.inspectionId 
-              ? `/inspections/inspections/${item.data.inspectionId}/`
+            const auditData = { ...item.data };
+            
+            // Handle pending photos if any
+            if (auditData.pending_photos && auditData.pending_photos.length > 0) {
+              const photoUrls = [];
+              const photoMeta = [];
+              for (const p of auditData.pending_photos) {
+                try {
+                  const uploadData = new FormData();
+                  uploadData.append('file', p.file);
+                  const publicData = await apiFetch('/inspections/upload/', {
+                    method: 'POST',
+                    body: uploadData
+                  });
+                  photoUrls.push(publicData.publicUrl);
+                  photoMeta.push({ 
+                    url: publicData.publicUrl, 
+                    name: p.name, 
+                    caption: p.caption, 
+                    issue: p.issue 
+                  });
+                } catch (imgErr) {
+                  // If image fails, we can skip or keep it, 
+                  // but let's try to proceed with at least the text data
+                }
+              }
+              auditData.photo_urls = [...(auditData.photo_urls || []), ...photoUrls];
+              auditData.photo_meta = [...(auditData.photo_meta || []), ...photoMeta];
+              delete auditData.pending_photos;
+            }
+
+            const url = auditData.inspectionId 
+              ? `/inspections/inspections/${auditData.inspectionId}/`
               : '/inspections/inspections/';
             await apiFetch(url, {
-              method: item.data.inspectionId ? 'PATCH' : 'POST',
-              body: JSON.stringify(item.data)
+              method: auditData.inspectionId ? 'PATCH' : 'POST',
+              body: JSON.stringify(auditData)
             });
           }
           // Success! Remove from offline store
