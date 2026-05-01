@@ -62,8 +62,7 @@ export default function SyncManager() {
           // Success! Remove from offline store
           await deleteSubmission(item.id);
         } catch (itemErr) {
-          console.error('Failed to sync item:', item, itemErr);
-          // Keep item in store and continue with others
+          // Silent catch for individual items to prevent one failure from blocking others
         }
       }
       await checkPending();

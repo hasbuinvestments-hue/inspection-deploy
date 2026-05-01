@@ -353,7 +353,7 @@ export default function InspectionForm({ profile, initialData, onComplete }) {
           if (onComplete) onComplete();
           return;
         } catch (offlineErr) {
-          console.error(offlineErr);
+          // Offline storage failed
         }
       }
       console.error(e);
