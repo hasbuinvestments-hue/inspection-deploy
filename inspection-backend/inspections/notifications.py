@@ -1,6 +1,7 @@
 import requests
 import os
 import logging
+from .utils import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,14 @@ class NotificationService:
         # 2. WhatsApp/SMS Placeholder (Can be linked to Twilio/AfricasTalking)
         if phone:
             NotificationService._send_sms_whatsapp(phone, message)
+            
+        log_activity(None, 'NOTIFICATION_SENT', {
+            'type': 'registration',
+            'business_id': str(business.id),
+            'business_name': business_name,
+            'recipient_email': email,
+            'recipient_phone': phone
+        })
 
     @staticmethod
     def send_audit_completion_alert(inspection):
@@ -42,6 +51,14 @@ class NotificationService:
             
         if phone:
             NotificationService._send_sms_whatsapp(phone, message)
+
+        log_activity(None, 'NOTIFICATION_SENT', {
+            'type': 'audit_completion',
+            'inspection_id': str(inspection.id),
+            'business_name': business.business_name,
+            'recipient_email': email,
+            'recipient_phone': phone
+        })
 
     @staticmethod
     def _send_email(to_email, subject, content):
